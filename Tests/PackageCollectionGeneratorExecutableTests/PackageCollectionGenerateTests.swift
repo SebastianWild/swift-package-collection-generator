@@ -25,7 +25,7 @@ final class PackageCollectionGenerateTests: XCTestCase {
 
     func test_help() throws {
         XCTAssert(try executeCommand(command: "package-collection-generate --help")
-            .stdout.contains("USAGE: package-collection-generate <input-path> <output-path> [--working-directory-path <working-directory-path>] [--revision <revision>] [--verbose]"))
+            .stdout.contains("USAGE: package-collection-generate <input-path> <output-path> [--working-directory-path <working-directory-path>] [--revision <revision>] [--pretty-printed] [--no-pretty-printed] [--verbose]"))
     }
 
     func test_endToEnd() throws {
@@ -75,20 +75,6 @@ final class PackageCollectionGenerateTests: XCTestCase {
             let inputData = try jsonEncoder.encode(input)
             let inputFilePath = tmpDir.appending(component: "input.json")
             try localFileSystem.writeFileContents(inputFilePath, bytes: ByteString(inputData))
-
-            // Where to write the generated collection
-            let outputFilePath = tmpDir.appending(component: "package-collection.json")
-            // `tmpDir` is where we extract the repos so use it as the working directory so we won't actually doing any cloning
-            let workingDirectoryPath = tmpDir
-
-            let cmd = try PackageCollectionGenerate.parse([
-                "--verbose",
-                inputFilePath.pathString,
-                outputFilePath.pathString,
-                "--working-directory-path",
-                workingDirectoryPath.pathString,
-            ])
-            try cmd.run()
 
             let expectedPackages = [
                 Model.Collection.Package(
@@ -197,13 +183,33 @@ final class PackageCollectionGenerateTests: XCTestCase {
             let jsonDecoder = JSONDecoder()
             jsonDecoder.dateDecodingStrategy = .iso8601
 
-            // Assert the generated package collection
-            let collectionData = try localFileSystem.readFileContents(outputFilePath).contents
-            let packageCollection = try jsonDecoder.decode(Model.Collection.self, from: Data(collectionData))
-            XCTAssertEqual(input.name, packageCollection.name)
-            XCTAssertEqual(input.overview, packageCollection.overview)
-            XCTAssertEqual(input.keywords, packageCollection.keywords)
-            XCTAssertEqual(expectedPackages, packageCollection.packages)
+            // Run command with and without pretty-printing
+            for prettyFlag in ["pretty-printed", "no-pretty-printed"] {
+                // Where to write the generated collection
+                let outputFilePath = tmpDir.appending(component: "package-collection-\(prettyFlag).json")
+                // `tmpDir` is where we extract the repos so use it as the working directory so we won't actually doing any cloning
+                let workingDirectoryPath = tmpDir
+
+                let cmd = try PackageCollectionGenerate.parse([
+                    "--verbose",
+                    "--\(prettyFlag)",
+                    inputFilePath.pathString,
+                    outputFilePath.pathString,
+                    "--working-directory-path",
+                    workingDirectoryPath.pathString,
+                ])
+                try cmd.run()
+
+                // Assert the generated package collection
+                let collectionData = try localFileSystem.readFileContents(outputFilePath).contents
+                let packageCollection = try jsonDecoder.decode(Model.Collection.self, from: Data(collectionData))
+                XCTAssertEqual(input.name, packageCollection.name)
+                XCTAssertEqual(input.overview, packageCollection.overview)
+                XCTAssertEqual(input.keywords, packageCollection.keywords)
+                XCTAssertEqual(expectedPackages, packageCollection.packages)
+
+                add(XCTAttachment(contentsOfFile: outputFilePath.asURL))
+            }
         }
     }
 }

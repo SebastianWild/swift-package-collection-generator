@@ -45,6 +45,9 @@ public struct PackageCollectionGenerate: ParsableCommand {
     @Option(help: "The revision number of the generated package collection")
     private var revision: Int?
 
+    @Flag(name: .long, inversion: .prefixedNo, help: "Format output using friendly indentation and line-breaks.")
+    private var prettyPrinted: Bool = true
+
     @Flag(name: .long, help: "Show extra logging for debugging purposes")
     private var verbose: Bool = false
 
@@ -93,6 +96,9 @@ public struct PackageCollectionGenerate: ParsableCommand {
             #else
             jsonEncoder.outputFormatting = [.sortedKeys]
             #endif
+        }
+        if prettyPrinted {
+            jsonEncoder.outputFormatting.insert(.prettyPrinted)
         }
 
         // Make sure the output directory exists
