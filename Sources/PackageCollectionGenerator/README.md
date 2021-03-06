@@ -8,7 +8,7 @@ by SwiftPM.
 > swift run package-collection-generate --help
 OVERVIEW: Generate a package collection from the given list of packages.
 
-USAGE: package-collection-generate <input-path> <output-path> [--working-directory-path <working-directory-path>] [--revision <revision>] [--verbose]
+USAGE: package-collection-generate <input-path> <output-path> [--working-directory-path <working-directory-path>] [--revision <revision>] [--pretty-printed] [--no-pretty-printed] [--verbose]
 
 ARGUMENTS:
   <input-path>            The path to the JSON document containing the list of packages to be processed 
@@ -24,6 +24,8 @@ OPTIONS:
 
                           Temporary directories will be used instead if this argument is not specified. 
   --revision <revision>   The revision number of the generated package collection 
+  --pretty-printed/--no-pretty-printed
+                          Format output using friendly indentation and line-breaks. (default: true)
   --verbose               Show extra logging for debugging purposes 
   -h, --help              Show help information.
 ```
