@@ -20,8 +20,6 @@ import PackageCollectionsModel
 import Utilities
 
 struct GitHubPackageMetadataProvider: PackageMetadataProvider {
-    private static let apiHostPrefix = "api."
-
     private let authTokens: [AuthTokenType: String]
     private let httpClient: HTTPClient
     private let decoder: JSONDecoder
@@ -118,10 +116,26 @@ struct GitHubPackageMetadataProvider: PackageMetadataProvider {
     }
 
     internal func apiURL(_ url: String) -> Foundation.URL? {
-        if let gitURL = GitURL.from(url) {
-            return URL(string: "https://\(Self.apiHostPrefix)\(gitURL.host)/repos/\(gitURL.owner)/\(gitURL.repository)")
+        guard let gitURL = GitURL.from(url) else { return nil }
+        
+        var gitHubAPIURL: Foundation.URL? {
+            URL(string: "https://\(AuthTokenType.github("").apiHostPrefix ?? "")\(gitURL.host)/repos/\(gitURL.owner)/\(gitURL.repository)")
         }
-        return nil
+        var gitHubEnterpriseAPIURL: Foundation.URL? {
+            URL(string: "https://\(gitURL.host)/api/v3/repos/\(gitURL.owner)/\(gitURL.repository)")
+        }
+        
+        guard let matchedTokenType = self.authTokens.keys.first(matchingHost: gitURL.host) else {
+            // No tokens or no hosts matched, default to GitHub.com API URL
+            return gitHubAPIURL
+        }
+        
+        switch matchedTokenType {
+        case .github:
+            return gitHubAPIURL
+        case .githubEnterprise:
+            return gitHubEnterpriseAPIURL
+        }
     }
 
     private func makeRequestOptions(validResponseCodes: [Int]) -> HTTPClientRequest.Options {
@@ -130,8 +144,24 @@ struct GitHubPackageMetadataProvider: PackageMetadataProvider {
         options.validResponseCodes = validResponseCodes
         options.authorizationProvider = { url in
             url.host.flatMap { host in
-                let host = host.hasPrefix(Self.apiHostPrefix) ? String(host.dropFirst(Self.apiHostPrefix.count)) : host
-                return self.authTokens[.github(host)].flatMap { token in "token \(token)" }
+                // For github.com, the host for our API requests will be `api.github.com`,
+                // for GitHub Enterprise, the host will be not have such a prefix.
+                // The tokens provided by the --auth-token param will not have such a prefix, so
+                // we need to find the matching token from the command line argument provided ones.
+                guard let applicableToken = self.authTokens.first(where: { (tokenType, _) -> Bool in
+                    host.hasSuffix(tokenType.host)
+                }) else {
+                    // No matching host found or no tokens provided - no auth is supported and no Authorization header will be added
+                    return nil
+                }
+                
+                switch applicableToken.key {
+                case .github(_):
+                    return "token \(applicableToken.value)"
+                case .githubEnterprise(_):
+                    // We don't really pass a token, we pass the base64 encoded <username>:<token> combination, provided as cli argument
+                    return "Basic \(applicableToken.value)"
+                }
             }
         }
         return options

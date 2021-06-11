@@ -22,11 +22,14 @@ protocol PackageMetadataProvider {
 
 enum AuthTokenType: Hashable, CustomStringConvertible {
     case github(_ host: String)
+    case githubEnterprise(_ host: String)
 
     var description: String {
         switch self {
         case .github(let host):
             return "github(\(host))"
+        case .githubEnterprise(let host):
+            return "githubEnterprise(\(host))"
         }
     }
 
@@ -34,6 +37,8 @@ enum AuthTokenType: Hashable, CustomStringConvertible {
         switch type {
         case "github":
             return .github(host)
+        case "githubEnterprise":
+            return .githubEnterprise(host)
         default:
             return nil
         }
@@ -66,5 +71,31 @@ extension Result {
         case .success(let value):
             return value
         }
+    }
+}
+
+extension AuthTokenType {
+    var host: String {
+        switch self {
+        case .github(let host):
+            return host
+        case .githubEnterprise(let host):
+            return host
+        }
+    }
+    
+    var apiHostPrefix: String? {
+        switch self {
+        case .github:
+            return "api."
+        case .githubEnterprise:
+            return nil
+        }
+    }
+}
+
+extension Collection where Element == AuthTokenType {
+    func first(matchingHost host: String) -> AuthTokenType? {
+        first { $0.host == host }
     }
 }
