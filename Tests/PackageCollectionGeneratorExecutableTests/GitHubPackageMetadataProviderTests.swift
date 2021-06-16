@@ -20,7 +20,9 @@ import Basics
 import TSCBasic
 
 final class GitHubPackageMetadataProviderTests: XCTestCase {
-    func test_apiURL() throws {
+    // MARK: - GitHub.com Tests
+
+    func test_apiURL_github() throws {
         let apiURL = URL(string: "https://api.github.com/repos/octocat/Hello-World")
         let provider = GitHubPackageMetadataProvider()
 
@@ -42,7 +44,7 @@ final class GitHubPackageMetadataProviderTests: XCTestCase {
         XCTAssertNil(provider.apiURL("bad/Hello-World.git"))
     }
 
-    func testGood() throws {
+    func testGood_github() throws {
         let repoURL = URL(string: "https://github.com/octocat/Hello-World.git")!
         let apiURL = URL(string: "https://api.github.com/repos/octocat/Hello-World")!
         let authTokens = [AuthTokenType.github("github.com"): "foo"]
@@ -218,9 +220,41 @@ final class GitHubPackageMetadataProviderTests: XCTestCase {
             XCTAssertNotNil(metadata.license)
         }
     }
+}
 
-    private func readGitHubData(filename: String) -> Data? {
-        let path = AbsolutePath(#file).parentDirectory.appending(components: "Inputs", "GitHub", filename)
+extension GitHubPackageMetadataProviderTests {
+    // MARK: - GitHub Enterprise Tests
+
+    func test_apiURL_githubEnterprise() throws {
+        let apiURL = URL(string: "https://githubEnterprise.foo/api/v3/repos/octocat/Hello-World")
+        let authTokens = [AuthTokenType.githubEnterprise("githubEnterprise.foo"): "bar"]
+        let provider = GitHubPackageMetadataProvider(authTokens: authTokens)
+
+        do {
+            let sshURLRetVal = provider.apiURL("git@githubEnterprise.foo:octocat/Hello-World.git")
+            XCTAssertEqual(apiURL, sshURLRetVal)
+        }
+
+        do {
+            let httpsURLRetVal = provider.apiURL("https://githubEnterprise.foo/octocat/Hello-World.git")
+            XCTAssertEqual(apiURL, httpsURLRetVal)
+        }
+
+        do {
+            let httpsURLRetVal = provider.apiURL("https://githubEnterprise.foo/octocat/Hello-World")
+            XCTAssertEqual(apiURL, httpsURLRetVal)
+        }
+
+        XCTAssertNil(provider.apiURL("bad/Hello-World.git"))
+    }
+}
+
+// MARK: - Helpers
+
+extension GitHubPackageMetadataProviderTests {
+    private func readGitHubData(filename: String, isGitHubEnterprise: Bool = false) -> Data? {
+        let gitHubDirName = isGitHubEnterprise ? "GitHubEnterprise" : "GitHub"
+        let path = AbsolutePath(#file).parentDirectory.appending(components: "Inputs", gitHubDirName, filename)
         guard let contents = try? localFileSystem.readFileContents(path).contents else {
             return nil
         }
