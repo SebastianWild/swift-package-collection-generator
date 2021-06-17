@@ -247,6 +247,150 @@ extension GitHubPackageMetadataProviderTests {
 
         XCTAssertNil(provider.apiURL("bad/Hello-World.git"))
     }
+
+    func testGood_githubEnterprise() throws {
+        let repoURL = URL(string: "https://githubEnterprise.foo/octocat/Hello-World.git")!
+        let apiURL = URL(string: "https://githubEnterprise.foo/api/v3/repos/octocat/Hello-World")!
+        let authTokens = [AuthTokenType.githubEnterprise("githubEnterprise.foo"): "bar"]
+
+        let handler: HTTPClient.Handler = { request, _, completion in
+            guard request.headers.get("Authorization").first == "Basic \(authTokens.first!.value)" else {
+                return completion(.success(.init(statusCode: 401)))
+            }
+
+            switch (request.method, request.url) {
+            case (.get, apiURL):
+                let data = self.readGitHubData(filename: "metadata.json", isGitHubEnterprise: true)!
+                completion(.success(.init(statusCode: 200,
+                                          headers: .init([.init(name: "Content-Length", value: "\(data.count)")]),
+                                          body: data)))
+            case (.get, apiURL.appendingPathComponent("readme")):
+                let data = self.readGitHubData(filename: "readme.json", isGitHubEnterprise: true)!
+                completion(.success(.init(statusCode: 200,
+                                          headers: .init([.init(name: "Content-Length", value: "\(data.count)")]),
+                                          body: data)))
+            case (.get, apiURL.appendingPathComponent("license")):
+                let data = self.readGitHubData(filename: "license.json", isGitHubEnterprise: true)!
+                completion(.success(.init(statusCode: 200,
+                                          headers: .init([.init(name: "Content-Length", value: "\(data.count)")]),
+                                          body: data)))
+            default:
+                XCTFail("method and url should match")
+            }
+        }
+
+        var httpClient = HTTPClient(handler: handler)
+        httpClient.configuration.circuitBreakerStrategy = .none
+        httpClient.configuration.retryStrategy = .none
+
+        let provider = GitHubPackageMetadataProvider(authTokens: authTokens, httpClient: httpClient)
+        let metadata = try tsc_await { callback in provider.get(repoURL, callback: callback) }
+
+        XCTAssertEqual("This your first repo!", metadata.summary)
+        XCTAssertEqual(["octocat", "atom", "electron", "api"], metadata.keywords)
+        XCTAssertEqual(URL(string: "https://githubEnterprise.foo/raw/octokit/octokit.rb/master/README.md"), metadata.readmeURL)
+        XCTAssertEqual("MIT", metadata.license?.name)
+        XCTAssertEqual(URL(string: "https://githubEnterprise.foo/raw/benbalter/gman/master/LICENSE?lab=true"), metadata.license?.url)
+    }
+
+    func testInvalidAuthToken_githubEnterprise() throws {
+        let repoURL = URL(string: "https://githubEnterprise.foo/octocat/Hello-World.git")!
+        let apiURL = URL(string: "https://githubEnterprise.foo/api/v3/repos/octocat/Hello-World")!
+        let authTokens = [AuthTokenType.githubEnterprise("githubEnterprise.foo"): "bar"]
+
+        let handler: HTTPClient.Handler = { request, _, completion in
+            if request.headers.get("Authorization").first == "Basic \(authTokens.first!.value)" {
+                completion(.success(.init(statusCode: 401)))
+            } else {
+                XCTFail("expected correct authorization header")
+                completion(.success(.init(statusCode: 500)))
+            }
+        }
+
+        var httpClient = HTTPClient(handler: handler)
+        httpClient.configuration.circuitBreakerStrategy = .none
+        httpClient.configuration.retryStrategy = .none
+
+        let provider = GitHubPackageMetadataProvider(authTokens: authTokens, httpClient: httpClient)
+        XCTAssertThrowsError(try tsc_await { callback in provider.get(repoURL, callback: callback) }, "should throw error") { error in
+            XCTAssertEqual(error as? GitHubPackageMetadataProvider.Errors, .invalidAuthToken(apiURL))
+        }
+    }
+
+    func testRepoNotFound_githubEnterprise() throws {
+        let repoURL = URL(string: "https://githubEnterprise.foo/octocat/Hello-World.git")!
+        let apiURL = URL(string: "https://githubEnterprise.foo/api/v3/repos/octocat/Hello-World")!
+        let authTokens = [AuthTokenType.githubEnterprise("githubEnterprise.foo"): "bar"]
+
+        let handler: HTTPClient.Handler = { _, _, completion in
+            completion(.success(.init(statusCode: 404)))
+        }
+
+        var httpClient = HTTPClient(handler: handler)
+        httpClient.configuration.circuitBreakerStrategy = .none
+        httpClient.configuration.retryStrategy = .none
+
+        let provider = GitHubPackageMetadataProvider(authTokens: authTokens, httpClient: httpClient)
+        XCTAssertThrowsError(try tsc_await { callback in provider.get(repoURL, callback: callback) }, "should throw error") { error in
+            XCTAssertEqual(error as? GitHubPackageMetadataProvider.Errors, .notFound(apiURL))
+        }
+    }
+
+    func testOthersNotFound_githubEnterprise() throws {
+        let repoURL = URL(string: "https://githubEnterprise.foo/octocat/Hello-World.git")!
+        let apiURL = URL(string: "https://githubEnterprise.foo/api/v3/repos/octocat/Hello-World")!
+        let authTokens = [AuthTokenType.githubEnterprise("githubEnterprise.foo"): "bar"]
+
+        let handler: HTTPClient.Handler = { request, _, completion in
+            guard request.headers.get("Authorization").first == "Basic \(authTokens.first!.value)" else {
+                return completion(.success(.init(statusCode: 401)))
+            }
+
+            switch (request.method, request.url) {
+            case (.get, apiURL):
+                let data = self.readGitHubData(filename: "metadata.json")!
+                completion(.success(.init(statusCode: 200,
+                                          headers: .init([.init(name: "Content-Length", value: "\(data.count)")]),
+                                          body: data)))
+            default:
+                completion(.success(.init(statusCode: 500)))
+            }
+        }
+
+        var httpClient = HTTPClient(handler: handler)
+        httpClient.configuration.circuitBreakerStrategy = .none
+        httpClient.configuration.retryStrategy = .none
+
+        let provider = GitHubPackageMetadataProvider(authTokens: authTokens, httpClient: httpClient)
+        let metadata = try tsc_await { callback in provider.get(repoURL, callback: callback) }
+
+        XCTAssertEqual("This your first repo!", metadata.summary)
+        XCTAssertEqual(["octocat", "atom", "electron", "api"], metadata.keywords)
+        XCTAssertNil(metadata.readmeURL)
+        XCTAssertNil(metadata.license)
+    }
+
+    /**
+     This test is skipped right now - it will fail since the `GitHubPackageMetadataProvider.Errors` case `.permissionDenied` will have its associated value contain the wrong URL.
+     This is because current logic uses the supplied auth tokens to infer the API URL, which is inherently flawed and will fail if no tokens are provided - since it cannot infer what API URL format it should use
+     */
+    func skipped_testPermissionDenied_githubEnterprise() throws {
+        let repoURL = URL(string: "https://githubEnterprise.foo/octocat/Hello-World.git")!
+        let apiURL = URL(string: "https://githubEnterprise.foo/api/v3/repos/octocat/Hello-World")!
+
+        let handler: HTTPClient.Handler = { _, _, completion in
+            completion(.success(.init(statusCode: 401)))
+        }
+
+        var httpClient = HTTPClient(handler: handler)
+        httpClient.configuration.circuitBreakerStrategy = .none
+        httpClient.configuration.retryStrategy = .none
+
+        let provider = GitHubPackageMetadataProvider(httpClient: httpClient)
+        XCTAssertThrowsError(try tsc_await { callback in provider.get(repoURL, callback: callback) }, "should throw error") { error in
+            XCTAssertEqual(error as? GitHubPackageMetadataProvider.Errors, .permissionDenied(apiURL))
+        }
+    }
 }
 
 // MARK: - Helpers
